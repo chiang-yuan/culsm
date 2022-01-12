@@ -1,0 +1,18 @@
+read_data	toy_system_spring.data	# this is a comment
+
+mass		1 1
+mass		2 1
+mass		3 1
+mass		4 1
+
+bond		1 leb 1e-3 10.0 10.1
+bond		2 leb 1e-5 10.0 11.0
+bond		3 leb 6.25e-5 10.0 10.4
+
+dump		dump/dump.%d 1000
+thermo		100
+# this is a line comment
+
+fix		3 -5e-4 0 0
+fix		4 5e-4 0 0
+run		1 100000
