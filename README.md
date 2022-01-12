@@ -6,7 +6,7 @@ If you happen to use this code in your work, please cite:
 
 > Chiang Y, Chiu T-W and Chang S-W (2022) ImageMech: From Image to Particle Spring Network for Mechanical Characterization. *Front. Mater.* 8:803875. doi: 10.3389/fmats.2021.803875
 
-Instead of spatial decomposition as used in LAMMPS, CULSM applies parallization to atom and bond lists and therefore secures remarkable speedup for large-scale lattice spring model simulations.
+Instead of spatial decomposition as used in [LAMMPS](https://www.lammps.org/), CuLSM applies parallization to atom and bond lists and therefore secures remarkable speedup for large-scale lattice spring model simulations.
 
 ![speedup](./asset/time.png)
 
