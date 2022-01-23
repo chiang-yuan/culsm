@@ -48,7 +48,9 @@ bond            <type> <bond type> <coeff 1> <coeff 2> ... <coeff n>
 
 fix             <type> <disp x> <disp y> <disp z>
 
-dump            <file name> <n>
+dump            <file name> <timesteps>
+
+thermo          <timesteps>
 
 run             <dt> <timesteps>
 ```

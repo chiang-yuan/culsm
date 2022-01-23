@@ -136,20 +136,22 @@ __global__ void stress_virial_kin(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     
     if (i < natoms) {
+        int i6 = i * 6;
+        int i3 = i * 3;
 
-        stress[i*6] = 0;        // xx
-        stress[i*6 + 1] = 0;    // yy
-        stress[i*6 + 2] = 0;    // zz
-        stress[i*6 + 3] = 0;    // xy
-        stress[i*6 + 4] = 0;    // yz
-        stress[i*6 + 5] = 0;    // zx
+        stress[i6] = 0;        // xx
+        stress[i6 + 1] = 0;    // yy
+        stress[i6 + 2] = 0;    // zz
+        stress[i6 + 3] = 0;    // xy
+        stress[i6 + 4] = 0;    // yz
+        stress[i6 + 5] = 0;    // zx
 
-        stress[i*6] -= m[i] * v[i*6] * v[i*6];
-        stress[i*6 + 1] -= m[i] * v[i*6 + 1] * v[i*6 + 1];
-        stress[i*6 + 2] -= m[i] * v[i*6 + 2] * v[i*6 + 2];
-        stress[i*6 + 3] -= m[i] * v[i*6] * v[i*6 + 1];
-        stress[i*6 + 4] -= m[i] * v[i*6 + 1] * v[i*6 + 2];
-        stress[i*6 + 5] -= m[i] * v[i*6 + 2] * v[i*6];
+        stress[i6] -= m[i] * v[i3] * v[i3];
+        stress[i6 + 1] -= m[i] * v[i3 + 1] * v[i3 + 1];
+        stress[i6 + 2] -= m[i] * v[i3 + 2] * v[i3 + 2];
+        stress[i6 + 3] -= m[i] * v[i3] * v[i3 + 1];
+        stress[i6 + 4] -= m[i] * v[i3 + 1] * v[i3 + 2];
+        stress[i6 + 5] -= m[i] * v[i3 + 2] * v[i3];
 
     }
 
