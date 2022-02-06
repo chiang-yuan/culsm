@@ -121,9 +121,10 @@ __global__ void verlet_update_acc(double* a, float* m, double* f,
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (i < natoms) {
-        a[i*3] = f[i*3]/m[i];
-        a[i*3 + 1] = f[i*3 + 1]/m[i];
-        a[i*3 + 2] = f[i*3 + 2]/m[i];
+        int i3 = i * 3;
+        a[i3] = f[i3]/m[i];
+        a[i3 + 1] = f[i3 + 1]/m[i];
+        a[i3 + 2] = f[i3 + 2]/m[i];
     }
     
     __syncthreads();
@@ -354,12 +355,9 @@ int Run::verlet(
 
     // volatile bool flag = true;
     for (int ti = 0; ti < timesteps; ti++) {
-        // TODO: thermo
-        // if (ti % 1000 == 0) printf("timestep %10d\n", ti);
 
         cudaEventRecord(start,0);
 
-        // TODO: set fix type with classs by command
         for (std::vector<Fix>::iterator ifix = fixes.begin(); ifix != fixes.end(); ifix++) {
             fix_rigidmove<<<dimGridforAtom, dimBlockforAtom>>>(
                 d_type, d_x, d_v, d_a,
@@ -396,79 +394,6 @@ int Run::verlet(
         verlet_update_vel<<<dimGridforAtom, dimBlockforAtom>>>(d_v, d_a, dt/2.0, sys.natoms*3);
 
         cudaDeviceSynchronize();
-        
-        /*
-        if (flag) {
-            // calculate velocity at the next half timestep v(t+dt/2) = v(t) + 1/2*a(t)*dt
-            verlet_update_vel<<<dimGridforAtom, dimBlockforAtom>>>(d_v, d_a, dt/2.0, sys.natoms*3);
-
-            cudaDeviceSynchronize();
-
-            // calculate position at the next timestep x(t+dt) = x(t) + v(t+dt/2)*dt 
-            verlet_update_pos<<<dimGridforAtom, dimBlockforAtom>>>(d_x, d_v, dt, sys.natoms*3);
-
-            cudaDeviceSynchronize();
-
-            // calculate accerlation at the next timestep a(t+dt) by x(t+dt)
-            calculate_force<<<dimGridforBond, dimBlockforBond>>>(
-                d_x, d_f,
-                d_k, d_r0, d_rc, d_atom_i, d_atom_j, 
-                sys.natoms, sys.nbonds
-            );
-
-            cudaDeviceSynchronize();
-
-            verlet_update_acc<<<dimGridforAtom, dimGridforAtom>>>(d_a, d_m, d_f, sys.natoms);
-
-            cudaDeviceSynchronize();
-
-            // calculate velocity at the next full timestep v(t+dt) = v(t+dt/2) + 1/2*a(t+dt)*dt
-            verlet_update_vel<<<dimGridforAtom, dimBlockforAtom>>>(d_v, d_a, dt/2.0, sys.natoms*3);
-
-
-
-            ////////////////////////////////////////////////////////////////////////////////////
-
-            
-
-            
-
-            
-
-            
-
-            
-
-            cudaDeviceSynchronize();
-
-            // calculate velocity at the next timestep v(t+dt) = v(t) + 1/2*(a(t) + a(t+dt))*dt
-            verlet_update_vel<<<dimGridforAtom, dimBlockforAtom>>>(d_v, d_a_old, d_a_new, dt, sys.natoms*3);
-
-            flag = !flag;
-        }
-        else {
-            // calculate position at the next timestep x(t+dt) = x(t) + v(t)*dt + 1/2*a(t)*dt^2
-            verlet_update_pos<<<dimGridforAtom, dimBlockforAtom>>>(d_x, d_v, d_a_new, dt, sys.natoms*3);
-
-            cudaDeviceSynchronize();
-
-            // calculate accerlation at the next timestep a(t+dt) by x(t+dt)
-            calculate_force<<<dimGridforBond, dimBlockforBond>>>(d_x, d_f,
-                                                                          d_k, d_r0, d_rc, d_atom_i, d_atom_j, 
-                                                                          sys.natoms, sys.nbonds);
-
-            cudaDeviceSynchronize();
-            
-            verlet_update_acc<<<dimGridforAtom, dimGridforAtom>>>(d_a_old, d_m, d_f, sys.natoms);
-
-            cudaDeviceSynchronize();
-            
-            // calculate velocity at the next timestep v(t+dt) = v(t) + 1/2*(a(t) + a(t+dt))*dt
-            verlet_update_vel<<<dimGridforAtom, dimBlockforAtom>>>(d_v, d_a_new, d_a_old, dt, sys.natoms*3);
-
-            flag = !flag;
-        }
-        */
 
         // TODO: dump setting, dump box info
         if (ti % dump.ndump == 0 || ti % thermo.nthermo == 0) {
