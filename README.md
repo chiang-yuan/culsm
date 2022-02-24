@@ -8,7 +8,7 @@ If you happen to use this code in your work, please cite:
 
 Instead of spatial decomposition as used in [LAMMPS](https://www.lammps.org/), CuLSM applies parallization to atom and bond lists and therefore secures remarkable speedup for large-scale lattice spring model simulations.
 
-![speedup](./asset/time.png)
+![speedup](./asset/time.jpg)
 
 ## Prerequisites
 
