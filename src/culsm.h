@@ -7,7 +7,7 @@
 #ifndef CULSM_H
 #define CULSM_H
 
-#define CULSM_VERSION "v1.0 / 12 Jan 2022"
+#define CULSM_VERSION "v2.0 / 14 Mar 2022"
 
 #define WHITESPACE " \t\r\n\f"
 

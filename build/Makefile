@@ -9,7 +9,7 @@ NVFLAGS = 	-O3 -I$(CUDIR)/include -m64 -arch=compute_75 -code=sm_75 -Xptxas -v -
 
 TARGET	=	culsm
 
-SRC_DIRS	?=	./src
+SRC_DIRS	?=	./../src
 
 SRCS 	:=	$(shell find $(SRC_DIRS) -name *.cpp -or -name *.c -or -name *.cu -or -name *.s)
 
@@ -24,9 +24,13 @@ MKFILE	= 	Makefile
 
 
 $(TARGET) : $(OBJS)
+		echo $@
+		echo $^
 		$(NVCC) $(NVFLAGS) $(INC) -o $(TARGET) $(OBJS) $(LFLAGS) $(LIBS)
 
 .c.o:
+		echo $@
+		echo $^
 		$(NVCC) $(NVFLAGS) $(INC) -c $< -o $@
 
 

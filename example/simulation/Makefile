@@ -24,9 +24,13 @@ MKFILE	= 	Makefile
 
 
 $(TARGET) : $(OBJS)
+		echo $@
+		echo $^
 		$(NVCC) $(NVFLAGS) $(INC) -o $(TARGET) $(OBJS) $(LFLAGS) $(LIBS)
 
 .c.o:
+		echo $@
+		echo $^
 		$(NVCC) $(NVFLAGS) $(INC) -c $< -o $@
 
 

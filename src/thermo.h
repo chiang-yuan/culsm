@@ -7,11 +7,31 @@
 #ifndef THERMO_H
 #define THERMO_H
 
+#include "culsm.h"
 #include "error.h"
 #include "system.h"
-#include "culsm.h"
 
-extern float* h_k;			// bond stiffness
+
+// host vectors
+
+// extern float* h_k;			// bond stiffness
+// extern double* h_parsum_pe;
+
+// device vectors
+
+extern double* d_x;
+extern float* d_k;
+extern float* d_r0;
+extern int* d_atom_i;
+extern int* d_atom_j;
+
+// extern double* d_parsum_pe;
+
+// extern __global__ void reduce_pe(
+// 	double* x, float* k, float* r0, int* atom_i, int* atom_j,
+// 	double* parsum_pe, // partial sum of potential energy
+// 	int nbonds
+// );
 
 class Thermo
 {

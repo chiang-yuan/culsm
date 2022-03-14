@@ -1,4 +1,5 @@
 #include "run.h"
+#include "thermo.h"
 
 // host vectors
 
@@ -7,6 +8,8 @@ float* h_k;         // bond stiffness
 float* h_r0;
 float* h_rc; 
 float* h_stress;   // atom stresses
+
+// double* h_parsum_pe;
 
 // device vectors
 
@@ -25,6 +28,9 @@ float* d_r0;
 float* d_rc;
 int* d_atom_i;      // bonded atom i
 int* d_atom_j;      // bonded atom j
+
+// double* d_parsum_pe; 		// partial sum of potential energy
+
 
 __global__ void fix_rigidmove(int* type, double* x, double* v, double* a,
                               int fix_type, double vx, double vy, double vz,
@@ -395,7 +401,7 @@ int Run::verlet(
 
         cudaDeviceSynchronize();
 
-        // TODO: dump setting, dump box info
+        // TODO: dump setting
         if (ti % dump.ndump == 0 || ti % thermo.nthermo == 0) {
             cudaMemcpy(sys.x, d_x, atom_double3_size, cudaMemcpyDeviceToHost);
             cudaMemcpy(sys.v, d_v, atom_double3_size, cudaMemcpyDeviceToHost);
