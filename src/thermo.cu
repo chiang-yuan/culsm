@@ -3,10 +3,12 @@
 // // host vectors
 
 double* h_parsum_pe;
+double* h_parsum_ke;
 
 // // device vectors
 
 double* d_parsum_pe; 		// partial sum of potential energy
+double* d_parsum_ke; 		// partial sum of kinetic energy
 
 __global__ void reduce_pe(
 	double* x, float* k, float* r0, int* atom_i, int* atom_j,
@@ -49,6 +51,46 @@ __global__ void reduce_pe(
 	__syncthreads();
 }
 
+__global__ void reduce_ke(
+	float* m, double* v, 
+	double* parsum_ke, // partial sum of potential energy
+	int natoms
+)
+{
+	extern __shared__ double cache[];
+
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	
+	double temp, v2 = 0;
+
+	while (i < natoms) {
+
+		int a3 = i * 3;
+		
+		v2 = pow(v[a3], 2) + 
+			pow(v[a3 + 1], 2) +
+			pow(v[a3 + 2], 2);
+
+		temp += 1.0/2.0*m[i]*v2;
+		
+		i += gridDim.x * blockDim.x;
+	}
+	cache[threadIdx.x] = temp;
+
+	__syncthreads();
+
+	// parallel reduction
+
+	int ihalf = blockDim.x/2;
+	while (ihalf != 0) {
+		if (threadIdx.x < ihalf) cache[threadIdx.x] += cache[threadIdx.x + ihalf];
+		__syncthreads();
+		ihalf /= 2;
+	}
+	if (threadIdx.x == 0) parsum_ke[blockIdx.x] = cache[threadIdx.x];
+	__syncthreads();
+}
+
 Thermo::Thermo(Error *error_)
 {
 	error = error_;
@@ -66,22 +108,6 @@ int Thermo::set(int nthermo_)
 
 double Thermo::pe(System & sys)
 {
-	// TODO: parallel reduction
-	// double energy = 0;
-
-	// TODO: other potentials (non-bonded, angles, etc)
-
-	// bonds
-
-	// bigint b;
-	// int btype;
-	// bigint ai;
-	// bigint aj;
-
-	// double k;
-	// double r0;
-	// double rij;	
-
 	int threadsPerBlockforBonds = BLOCK_SIZE;
     int blocksPerGridforBonds = (sys.nbonds + threadsPerBlockforBonds - 1)/threadsPerBlockforBonds;
 
@@ -130,26 +156,53 @@ double Thermo::pe(System & sys)
 
 double Thermo::ke(System & sys)
 {
-	// TODO: parallel reduction
-	double energy = 0;
+	int threadsPerBlockforAtoms = BLOCK_SIZE;
+    int blocksPerGridforAtoms = (sys.natoms + threadsPerBlockforAtoms - 1)/threadsPerBlockforAtoms;
 
-	bigint a;
-	int type;
-	double mass;
-	double v2;
+	dim3 dimBlockforAtom(threadsPerBlockforAtoms, 1, 1);
+    dim3 dimGridforAtom(blocksPerGridforAtoms, 1, 1);
 
-	for (a = 0; a < sys.natoms; a++) {
-		type = sys.type[a];
-		mass = sys.atomTypes[type - 1].mass;
-		
-		v2 = pow(sys.v[a*3], 2) + 
-			pow(sys.v[a*3 + 1], 2) +
-			pow(sys.v[a*3 + 2], 2);
+	int atom_double_sm_size = blocksPerGridforAtoms*sizeof(double);
+	h_parsum_ke = (double*)calloc(blocksPerGridforAtoms, sizeof(double));
 
-		energy += 1.0/2.0*mass*v2;
+	cudaMalloc((void**)&d_parsum_ke, atom_double_sm_size);
+
+	cudaMemcpy(d_parsum_ke, h_parsum_ke, atom_double_sm_size, cudaMemcpyHostToDevice);
+
+	int sm = threadsPerBlockforAtoms*sizeof(double);
+	reduce_ke<<<dimGridforAtom, dimBlockforAtom, sm>>>(
+		d_m, d_v,
+		d_parsum_ke, // partial sum of potential energy
+		sys.natoms
+    );
+	cudaMemcpy(h_parsum_ke, d_parsum_ke, atom_double_sm_size, cudaMemcpyDeviceToHost);
+
+	// Add the partial sum of all blocks
+	double sum_ke = 0;
+	for (int i = 0; i < blocksPerGridforAtoms; i++) {
+		sum_ke += h_parsum_ke[i];
 	}
+	
+	// // TODO: parallel reduction
+	// double energy = 0;
 
-	return energy;
+	// bigint a;
+	// int type;
+	// double mass;
+	// double v2;
+
+	// for (a = 0; a < sys.natoms; a++) {
+	// 	type = sys.type[a];
+	// 	mass = sys.atomTypes[type - 1].mass;
+		
+	// 	v2 = pow(sys.v[a*3], 2) + 
+	// 		pow(sys.v[a*3 + 1], 2) +
+	// 		pow(sys.v[a*3 + 2], 2);
+
+	// 	energy += 1.0/2.0*mass*v2;
+	// }
+
+	return sum_ke;
 }
 
 int Thermo::write_thermo(int timestep, System & sys)

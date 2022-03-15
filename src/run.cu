@@ -246,17 +246,17 @@ int Run::verlet(
 
     // TODO: format camel name of variable
     int threadsPerBlockforAtoms = BLOCK_SIZE;
-    int blocksPerGridforAtoms = (sys.natoms*3 + threadsPerBlockforAtoms - 1)/threadsPerBlockforAtoms;
+    int blocksPerGridforAtoms3 = (sys.natoms*3 + threadsPerBlockforAtoms - 1)/threadsPerBlockforAtoms;
     int blocksPerGridforAtoms6 = (sys.natoms*6 + threadsPerBlockforAtoms - 1)/threadsPerBlockforAtoms;
 
     int threadsPerBlockforBonds = BLOCK_SIZE;
     int blocksPerGridforBonds = (sys.nbonds + threadsPerBlockforBonds - 1)/threadsPerBlockforBonds;
 
     dim3 dimBlockforAtom(threadsPerBlockforAtoms, 1, 1);
-    dim3 dimGridforAtom(blocksPerGridforAtoms, 1, 1);
+    dim3 dimGridforAtom3(blocksPerGridforAtoms3, 1, 1);
     dim3 dimGridforAtom6(blocksPerGridforAtoms6, 1, 1);
     printf("\tthread size for atoms: (%d, %d, %d)\n", dimBlockforAtom.x, dimBlockforAtom.y, dimBlockforAtom.z);
-    printf("\tgrid size for atoms: (%d, %d, %d)\n", dimGridforAtom.x, dimGridforAtom.y, dimGridforAtom.z);
+    printf("\tgrid size for atoms: (%d, %d, %d)\n", dimGridforAtom3.x, dimGridforAtom3.y, dimGridforAtom3.z);
 
     dim3 dimBlockforBond(threadsPerBlockforBonds, 1, 1);
     dim3 dimGridforBond(blocksPerGridforBonds, 1, 1);
@@ -365,7 +365,7 @@ int Run::verlet(
         cudaEventRecord(start,0);
 
         for (std::vector<Fix>::iterator ifix = fixes.begin(); ifix != fixes.end(); ifix++) {
-            fix_rigidmove<<<dimGridforAtom, dimBlockforAtom>>>(
+            fix_rigidmove<<<dimGridforAtom3, dimBlockforAtom>>>(
                 d_type, d_x, d_v, d_a,
                 ifix->type, ifix->dispx, ifix->dispy, ifix->dispz,
                 dt, sys.natoms*3);
@@ -374,12 +374,12 @@ int Run::verlet(
         cudaDeviceSynchronize();
 
         // calculate velocity at the next half timestep v(t+dt/2) = v(t) + 1/2*a(t)*dt
-        verlet_update_vel<<<dimGridforAtom, dimBlockforAtom>>>(d_v, d_a, dt/2.0, sys.natoms*3);
+        verlet_update_vel<<<dimGridforAtom3, dimBlockforAtom>>>(d_v, d_a, dt/2.0, sys.natoms*3);
 
         cudaDeviceSynchronize();
 
         // calculate position at the next timestep x(t+dt) = x(t) + v(t+dt/2)*dt 
-        verlet_update_pos<<<dimGridforAtom, dimBlockforAtom>>>(d_x, d_v, dt, sys.natoms*3);
+        verlet_update_pos<<<dimGridforAtom3, dimBlockforAtom>>>(d_x, d_v, dt, sys.natoms*3);
 
         cudaDeviceSynchronize();
 
@@ -392,12 +392,12 @@ int Run::verlet(
 
         cudaDeviceSynchronize();
 
-        verlet_update_acc<<<dimGridforAtom, dimBlockforAtom>>>(d_a, d_m, d_f, sys.natoms);
+        verlet_update_acc<<<dimGridforAtom3, dimBlockforAtom>>>(d_a, d_m, d_f, sys.natoms);
 
         cudaDeviceSynchronize();
 
         // calculate velocity at the next full timestep v(t+dt) = v(t+dt/2) + 1/2*a(t+dt)*dt
-        verlet_update_vel<<<dimGridforAtom, dimBlockforAtom>>>(d_v, d_a, dt/2.0, sys.natoms*3);
+        verlet_update_vel<<<dimGridforAtom3, dimBlockforAtom>>>(d_v, d_a, dt/2.0, sys.natoms*3);
 
         cudaDeviceSynchronize();
 
