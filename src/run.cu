@@ -297,7 +297,8 @@ int Run::verlet(
     h_r0 = (float *)malloc(bond_float_size);
     h_rc = (float *)malloc(bond_float_size);
 
-    int bt, i3, j3, r_ij;
+    int bt, i3, j3;
+    double r_ij;
     for (int b = 0; b < sys.nbonds; b++) {
         bt = sys.bond_type[b] - 1;
         
