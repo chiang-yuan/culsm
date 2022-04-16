@@ -165,11 +165,26 @@ int main(int argc, char *argv[]) {
 				double r0 = atof(argv[4]);
 				double rc = atof(argv[5]);
 
-				// printf("%e %e %e", ke, r0, rc);
-
+				sys.bondTypes[btype - 1].no_bond_coeffs = 3;
+				
 				sys.bondTypes[btype - 1].coeff[0] = ke;	// linear elastic stiffness
 				sys.bondTypes[btype - 1].coeff[1] = r0;	// equilibrium length
 				sys.bondTypes[btype - 1].coeff[2] = rc;	// critical length
+
+				strcpy(sys.bondTypes[btype - 1].name, argv[2]);
+			}
+			else if (strncmp(argv[2], "lecs", 4) == 0) {
+
+				if (argc != 1 + 4) error.message("Incorrect argument for linear elastic critical strain bond", -1);
+				double ke = atof(argv[3]);
+				double cs = atof(argv[4]);
+
+				sys.bondTypes[btype - 1].no_bond_coeffs = 2;
+				
+				sys.bondTypes[btype - 1].coeff[0] = ke;	// linear elastic stiffness
+				sys.bondTypes[btype - 1].coeff[1] = cs;	// critical strain
+
+				strcpy(sys.bondTypes[btype - 1].name, argv[2]);
 			}
 		}
     }

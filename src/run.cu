@@ -91,31 +91,28 @@ __global__ void calculate_force(double* x, double* f,
     __syncthreads();
 
     if (i < nbonds) {
-
-        int ai = atom_i[i];
-        int aj = atom_j[i];
-        int index_i = ai * 3;
-        int index_j = aj * 3;
+        int i3 = atom_i[i] * 3;
+        int j3 = atom_j[i] * 3;
         
-        double r_ij = sqrt(pow(x[index_j] - x[index_i], 2) + 
-                          pow(x[index_j + 1] - x[index_i + 1], 2) + 
-                          pow(x[index_j + 2] - x[index_i + 2], 2));
+        double r_ij = sqrt(pow(x[j3] - x[i3], 2) + 
+                          pow(x[j3 + 1] - x[i3 + 1], 2) + 
+                          pow(x[j3 + 2] - x[i3 + 2], 2));
 
         if (r_ij > rc[i]) k[i] = 0;
 
         if (r_ij < EPS) r_ij += EPS;
 
-        double fix = -k[i] * (r_ij - r0[i]) * (x[index_i] - x[index_j])/r_ij;
-        double fiy = -k[i] * (r_ij - r0[i]) * (x[index_i + 1] - x[index_j + 1])/r_ij;
-        double fiz = -k[i] * (r_ij - r0[i]) * (x[index_i + 2] - x[index_j + 2])/r_ij;
+        double fix = -k[i] * (r_ij - r0[i]) * (x[i3] - x[j3])/r_ij;
+        double fiy = -k[i] * (r_ij - r0[i]) * (x[i3 + 1] - x[j3 + 1])/r_ij;
+        double fiz = -k[i] * (r_ij - r0[i]) * (x[i3 + 2] - x[j3 + 2])/r_ij;
 
-        atomicAdd(&f[index_i], fix);
-        atomicAdd(&f[index_i + 1], fiy);
-        atomicAdd(&f[index_i + 2], fiz);
+        atomicAdd(&f[i3], fix);
+        atomicAdd(&f[i3 + 1], fiy);
+        atomicAdd(&f[i3 + 2], fiz);
         
-        atomicAdd(&f[index_j], -fix);
-        atomicAdd(&f[index_j + 1], -fiy);
-        atomicAdd(&f[index_j + 2], -fiz);
+        atomicAdd(&f[j3], -fix);
+        atomicAdd(&f[j3 + 1], -fiy);
+        atomicAdd(&f[j3 + 2], -fiz);
     }
 
     __syncthreads();
@@ -278,33 +275,49 @@ int Run::verlet(
 
     h_m = (float *)malloc(atom_float_size);
 
+    int at;
     for (int a = 0; a < sys.natoms; a++) {
-        for (int at = 0; at < sys.no_atom_types; at++) {
-            if (sys.type[a] == at + 1) {
-                h_m[a] = sys.atomTypes[at].mass;
-                break;
-            }
-        }
+        at = sys.type[a] - 1;
+        h_m[a] = sys.atomTypes[at].mass;
+        // for (int at = 0; at < sys.no_atom_types; at++) {
+        //     if (sys.type[a] == at + 1) {
+        //         h_m[a] = sys.atomTypes[at].mass;
+        //         break;
+        //     }
+        // }
     }
 
     // allocate and zero-initialize atom stresses
 
     h_stress = (float *) calloc(sys.natoms*6, sizeof(float));
 
-    // initialize bond stiffness k
+    // initialize bonds
 
     h_k = (float *)malloc(bond_float_size);
     h_r0 = (float *)malloc(bond_float_size);
     h_rc = (float *)malloc(bond_float_size);
 
+    int bt, i3, j3, r_ij;
     for (int b = 0; b < sys.nbonds; b++) {
-        for (int bt = 0; bt < sys.no_bond_types; bt++) {
-            if (sys.bond_type[b] == bt + 1) {
-                h_k[b] = sys.bondTypes[bt].coeff[0];
-                h_r0[b] = sys.bondTypes[bt].coeff[1];
-                h_rc[b] = sys.bondTypes[bt].coeff[2];
-                break;
-            }
+        bt = sys.bond_type[b] - 1;
+        
+        if (strncmp(sys.bondTypes[bt].name, "leb", 3) == 0) {
+            h_k[b] = sys.bondTypes[bt].coeff[0];
+            h_r0[b] = sys.bondTypes[bt].coeff[1];
+            h_rc[b] = sys.bondTypes[bt].coeff[2];
+        }
+        else if (strncmp(sys.bondTypes[bt].name, "lecs", 4) == 0) {
+            h_k[b] = sys.bondTypes[bt].coeff[0];
+
+            i3 = sys.atom_i[b]*3;
+            j3 = sys.atom_j[b]*3;
+
+            r_ij = sqrt(pow(sys.x[j3] - sys.x[i3], 2) + 
+                pow(sys.x[j3 + 1] - sys.x[i3 + 1], 2) + 
+                pow(sys.x[j3 + 2] - sys.x[i3 + 2], 2));
+            
+            h_r0[b] = r_ij;
+            h_rc[b] = r_ij*(1 + sys.bondTypes[bt].coeff[1]);
         }
     }
 

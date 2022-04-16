@@ -11,6 +11,8 @@
 #define MAX_BONDS	100000
 #define MAX_ANGLES	100000
 
+#define MAX_BOND_COEFFS 10
+
 #include "atom.h"
 #include "bond.h"
 #include "angle.h"
@@ -26,7 +28,8 @@ struct AtomType {
 
 struct BondType {
 	int IJType[2];				// types of i and j atom
-	double coeff[3];			// bond coefficient (k, r0, rc)
+	int no_bond_coeffs;
+	double coeff[MAX_BOND_COEFFS];			// bond coefficient (k, r0, rc)
 	char style[MAX_NAME];		// bond style
 	char name[MAX_NAME];		// bond name
 };
