@@ -17,7 +17,7 @@ Instead of spatial decomposition as used in [LAMMPS](https://www.lammps.org/), C
 
 ## Build
 
-To buld `culsm` on your device, GPU architecture must be specified at the time of compilation. In `Makefile`, make sure the `NVFLAGS` fit your device. 
+To buld `culsm` on your device, GPU architecture must be specified at the time of compilation. In `build/Makefile`, make sure the `NVFLAGS` fit your device. 
 
 ```shell
 NVFLAGS = 	-O3 -I$(CUDIR)/include -m64 -arch=compute_75 -code=sm_75 -Xptxas -v -rdc=true
@@ -25,9 +25,10 @@ NVFLAGS = 	-O3 -I$(CUDIR)/include -m64 -arch=compute_75 -code=sm_75 -Xptxas -v -
 
 The GPU architecture (*e.g.* Kepler, Turing, *etc*.) may be found [here](https://en.wikipedia.org/wiki/CUDA#GPUs_supported), and the cooresponding CUDA naming scheme can be found in [Nvidia GPU Feature List](https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#gpu-feature-list).
 
-To compile the code, simply execute make in the terminal.
+To compile the code, enter `build` directory and simply execute make in the terminal.
 
 ```shell
+cd build
 make
 ```
 

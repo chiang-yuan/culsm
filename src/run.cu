@@ -24,8 +24,9 @@ float* d_stress;   // atom stresses
 // double* d_a_new;    // atom new accerlerations
 
 float* d_k;         // bond stiffness
-float* d_r0;
-float* d_rc;
+float* d_r0;        // bond equilirbium length
+float* d_rm;        // bond memory length
+float* d_rc;        // bond critical length
 int* d_atom_i;      // bonded atom i
 int* d_atom_j;      // bonded atom j
 
@@ -279,12 +280,6 @@ int Run::verlet(
     for (int a = 0; a < sys.natoms; a++) {
         at = sys.type[a] - 1;
         h_m[a] = sys.atomTypes[at].mass;
-        // for (int at = 0; at < sys.no_atom_types; at++) {
-        //     if (sys.type[a] == at + 1) {
-        //         h_m[a] = sys.atomTypes[at].mass;
-        //         break;
-        //     }
-        // }
     }
 
     // allocate and zero-initialize atom stresses

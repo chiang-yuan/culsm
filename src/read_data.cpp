@@ -489,12 +489,6 @@ int ReadData::load_from_lmpdata(char* filename_, System & sys)
 						return error->message("Invalid bond type in Bonds section of data file", 16);
 					}
 
-					// int index = (iid - 1) * 3;
-
-					// sys.A[index] = itype;
-					// sys.A[index + 1] = iI - 1;
-					// sys.A[index + 2] = iJ - 1;
-
 					sys.bond_type[iid - 1] = itype;
 					sys.atom_i[iid - 1] = iI - 1;
 					sys.atom_j[iid - 1] = iJ - 1;
