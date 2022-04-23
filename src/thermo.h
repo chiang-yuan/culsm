@@ -22,7 +22,7 @@
 extern float* d_m;
 extern double* d_x;
 extern double* d_v;
-extern float* d_k;
+extern float* d_ke;
 extern float* d_r0;
 extern int* d_atom_i;
 extern int* d_atom_j;

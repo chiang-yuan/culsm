@@ -186,6 +186,25 @@ int main(int argc, char *argv[]) {
 
 				strcpy(sys.bondTypes[btype - 1].name, argv[2]);
 			}
+			else if (strncmp(argv[2], "bep", 3) == 0) {
+
+				if (argc != 1 + 7) error.message("Incorrect argument for linear elastic critical strain bond", -1);
+				double ke = atof(argv[3]);
+				double kp = atof(argv[4]);
+				double r0 = atof(argv[5]);
+				double rc = atof(argv[6]);
+				double fy = atof(argv[7]);
+
+				sys.bondTypes[btype - 1].no_bond_coeffs = 5;
+				
+				sys.bondTypes[btype - 1].coeff[0] = ke;
+				sys.bondTypes[btype - 1].coeff[1] = kp;
+				sys.bondTypes[btype - 1].coeff[2] = r0;
+				sys.bondTypes[btype - 1].coeff[3] = rc;
+				sys.bondTypes[btype - 1].coeff[4] = fy;
+
+				strcpy(sys.bondTypes[btype - 1].name, argv[2]);
+			}
 		}
     }
 	

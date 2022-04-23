@@ -4,9 +4,12 @@
 // host vectors
 
 float* h_m;         // atom masses
-float* h_k;         // bond stiffness
+float* h_ke;        // bond elastic modulus
+float* h_kp;        // bond plastic modulus
 float* h_r0;
 float* h_rc; 
+float* h_fy;        // bond yield force
+
 float* h_stress;   // atom stresses
 
 // double* h_parsum_pe;
@@ -19,19 +22,26 @@ double* d_x;        // atom coordinates
 double* d_v;        // atom velocities
 double* d_f;        
 double* d_a;
+
 float* d_stress;   // atom stresses
 // double* d_a_old;    // atom old accerlerations
 // double* d_a_new;    // atom new accerlerations
 
-float* d_k;         // bond stiffness
+float* d_ke;        // bond elastic modulus
 float* d_r0;        // bond equilirbium length
 float* d_rm;        // bond memory length
 float* d_rc;        // bond critical length
 int* d_atom_i;      // bonded atom i
 int* d_atom_j;      // bonded atom j
 
-// double* d_parsum_pe; 		// partial sum of potential energy
-
+float* d_kp;        // bond plastic modulus
+float* d_ft;        // bond total force
+float* d_fa;        // bond active force
+float* d_fb;        // bond back force
+float* d_fy;        // bond yield force
+float* d_ue;        // bond elastic deformation
+float* d_up;        // bond plastic deformation
+int* d_state;       // bond state
 
 __global__ void fix_rigidmove(int* type, double* x, double* v, double* a,
                               int fix_type, double vx, double vy, double vz,
@@ -78,18 +88,19 @@ __global__ void verlet_update_vel(double* v, double* a,
     __syncthreads();
 }
 
-__global__ void calculate_force(double* x, double* f,
-                                float* k, float* r0, float* rc, int* atom_i, int* atom_j,
-                                int natoms, int nbonds)
+__global__ void calc_leb_force(  // calculate linear elastic brittle spring force
+    double* x, double* f,
+    float* k, float* r0, float* rc, int* atom_i, int* atom_j,
+    int nbonds)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     
-    if (i < natoms) {
-        f[i*3] = 0;
-        f[i*3 + 1] = 0;
-        f[i*3 + 2] = 0;
-    }
-    __syncthreads();
+    // if (i < natoms) {
+    //     f[i*3] = 0;
+    //     f[i*3 + 1] = 0;
+    //     f[i*3 + 2] = 0;
+    // }
+    // __syncthreads();
 
     if (i < nbonds) {
         int i3 = atom_i[i] * 3;
@@ -106,6 +117,78 @@ __global__ void calculate_force(double* x, double* f,
         double fix = -k[i] * (r_ij - r0[i]) * (x[i3] - x[j3])/r_ij;
         double fiy = -k[i] * (r_ij - r0[i]) * (x[i3 + 1] - x[j3 + 1])/r_ij;
         double fiz = -k[i] * (r_ij - r0[i]) * (x[i3 + 2] - x[j3 + 2])/r_ij;
+
+        atomicAdd(&f[i3], fix);
+        atomicAdd(&f[i3 + 1], fiy);
+        atomicAdd(&f[i3 + 2], fiz);
+        
+        atomicAdd(&f[j3], -fix);
+        atomicAdd(&f[j3 + 1], -fiy);
+        atomicAdd(&f[j3 + 2], -fiz);
+    }
+
+    __syncthreads();
+}
+
+__global__ void calc_bep_force( // calculate bilinear elastoplastic spring force
+    double* x, double* f,
+    float* ft, float* fa, float* fb, float* fy, int* state,
+    float* ue, float* up,
+    float* ke, float* kp, float* r0, float* rc, int* atom_i, int* atom_j,
+    int nbonds)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // if (i < natoms) {
+    //     f[i*3] = 0;
+    //     f[i*3 + 1] = 0;
+    //     f[i*3 + 2] = 0;
+    // }
+    // __syncthreads();
+
+    if (i < nbonds) {
+        int i3 = atom_i[i] * 3;
+        int j3 = atom_j[i] * 3;
+        
+        double r_ij = sqrt(pow(x[j3] - x[i3], 2) + 
+            pow(x[j3 + 1] - x[i3 + 1], 2) + 
+            pow(x[j3 + 2] - x[i3 + 2], 2));
+        
+        float u = r_ij - r0[i];
+
+        if (r0[i] + u <= rc[i] && state[i] != 2) {
+            if (fb[i] == 0) {
+                ft[i] = (abs(ke[i]*u) < fy[i]) ? 
+                    ke[i]*u : copysign(fy[i] + kp[i]*(abs(u) - fy[i]/ke[i]), u);
+                fa[i] = (abs(ke[i]*u) < fy[i]) ? 
+                    ke[i]*u : copysign(fy[i], u);
+                fb[i] = (abs(ke[i]*u) < fy[i]) ? fb[i] : ft[i] - fa[i];
+
+                ue[i] = ft[i]/ke[i];
+                up[i] = (abs(ke[i]*u) < fy[i]) ? up[i] : u - ue[i];
+            }
+            else {
+                state[i] = 1;
+                double ut = u - up[i] - fb[i]/ke[i];
+                ft[i] = (abs(ke[i]*ut) < fy[i]) ? 
+                    ke[i]*(u - up[i]) : 
+                    fb[i] + copysign(fy[i] + kp[i]*(abs(ut) - fy[i]/ke[i]), ut);
+                fa[i] = (abs(ke[i]*ut) < fy[i]) ? 
+                    ke[i]*ut : copysign(fy[i], ut);
+                fb[i] = (abs(ke[i]*ut) < fy[i]) ? fb[i] : ft[i] - fa[i];
+
+                ue[i] = ft[i]/ke[i];
+                up[i] = (abs(ke[i]*ut) < fy[i]) ? up[i] : u - ue[i];
+            }
+        }
+        else {
+            state[i] = 2;
+            ft[i] = 0;
+        }
+
+        double fix = -ft[i] * (x[i3] - x[j3])/r_ij;
+        double fiy = -ft[i] * (x[i3 + 1] - x[j3 + 1])/r_ij;
+        double fiz = -ft[i] * (x[i3 + 2] - x[j3 + 2])/r_ij;
 
         atomicAdd(&f[i3], fix);
         atomicAdd(&f[i3 + 1], fiy);
@@ -270,7 +353,7 @@ int Run::verlet(
     int bond_float_size = sys.nbonds*sizeof(float);
     int bond_int_size = sys.nbonds*sizeof(int);
 
-    int sm_size = threadsPerBlockforAtoms*3*sizeof(float);
+    // int sm_size = threadsPerBlockforAtoms*3*sizeof(float);
 
     // initialize atom mass m
 
@@ -288,9 +371,12 @@ int Run::verlet(
 
     // initialize bonds
 
-    h_k = (float *)malloc(bond_float_size);
+    h_ke = (float *)malloc(bond_float_size);
+    h_kp = (float *)malloc(bond_float_size);
     h_r0 = (float *)malloc(bond_float_size);
     h_rc = (float *)malloc(bond_float_size);
+
+    h_fy = (float *)malloc(bond_float_size);
 
     int bt, i3, j3;
     double r_ij;
@@ -298,12 +384,12 @@ int Run::verlet(
         bt = sys.bond_type[b] - 1;
         
         if (strncmp(sys.bondTypes[bt].name, "leb", 3) == 0) {
-            h_k[b] = sys.bondTypes[bt].coeff[0];
+            h_ke[b] = sys.bondTypes[bt].coeff[0];
             h_r0[b] = sys.bondTypes[bt].coeff[1];
             h_rc[b] = sys.bondTypes[bt].coeff[2];
         }
         else if (strncmp(sys.bondTypes[bt].name, "lecs", 4) == 0) {
-            h_k[b] = sys.bondTypes[bt].coeff[0];
+            h_ke[b] = sys.bondTypes[bt].coeff[0];
 
             i3 = sys.atom_i[b]*3;
             j3 = sys.atom_j[b]*3;
@@ -314,6 +400,13 @@ int Run::verlet(
             
             h_r0[b] = r_ij;
             h_rc[b] = r_ij*(1 + sys.bondTypes[bt].coeff[1]);
+        }
+        else if (strncmp(sys.bondTypes[bt].name, "bep", 3) == 0) {
+            h_ke[b] = sys.bondTypes[bt].coeff[0];
+            h_kp[b] = sys.bondTypes[bt].coeff[1];
+            h_r0[b] = sys.bondTypes[bt].coeff[2];
+            h_rc[b] = sys.bondTypes[bt].coeff[3];
+            h_fy[b] = sys.bondTypes[bt].coeff[4];
         }
     }
 
@@ -336,11 +429,22 @@ int Run::verlet(
     // cudaMalloc((void**)&d_a_old, atom_double3_size);
     // cudaMalloc((void**)&d_a_new, atom_double3_size);
 
-    cudaMalloc((void**)&d_k, bond_float_size);
+    cudaMalloc((void**)&d_ke, bond_float_size);
+    cudaMalloc((void**)&d_kp, bond_float_size);
     cudaMalloc((void**)&d_r0, bond_float_size);
     cudaMalloc((void**)&d_rc, bond_float_size);
     cudaMalloc((void**)&d_atom_i, bond_int_size);
     cudaMalloc((void**)&d_atom_j, bond_int_size);
+
+
+    cudaMalloc((void**)&d_ft, bond_float_size);
+    cudaMalloc((void**)&d_fa, bond_float_size);
+    cudaMalloc((void**)&d_fb, bond_float_size);
+    cudaMalloc((void**)&d_fy, bond_float_size);
+    cudaMalloc((void**)&d_state, bond_int_size);
+
+    cudaMalloc((void**)&d_ue, bond_float_size);
+    cudaMalloc((void**)&d_up, bond_float_size);
 
     // copy vectors from host memory to device memory
 
@@ -355,11 +459,21 @@ int Run::verlet(
     // cudaMemcpy(d_a_old, sys.a, atom_double3_size, cudaMemcpyHostToDevice);
     // cudaMemcpy(d_a_new, sys.a, atom_double3_size, cudaMemcpyHostToDevice);
 
-    cudaMemcpy(d_k, h_k, bond_float_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_ke, h_ke, bond_float_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_kp, h_kp, bond_float_size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_r0, h_r0, bond_float_size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_rc, h_rc, bond_float_size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_atom_i, sys.atom_i, bond_int_size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_atom_j, sys.atom_j, bond_int_size, cudaMemcpyHostToDevice);
+
+    cudaMemset(d_ft, 0, bond_float_size);
+    cudaMemset(d_fa, 0, bond_float_size);
+    cudaMemset(d_fb, 0, bond_float_size);
+    cudaMemcpy(d_fy, h_fy, bond_float_size, cudaMemcpyHostToDevice);
+    cudaMemset(d_state, 0, bond_int_size);
+
+    cudaMemset(d_ue, 0, bond_float_size);
+    cudaMemset(d_up, 0, bond_float_size);
 
     cudaEventRecord(stop,0);
     cudaEventSynchronize(stop);
@@ -392,11 +506,24 @@ int Run::verlet(
 
         cudaDeviceSynchronize();
 
+        // clear all atom forces
+        cudaMemset(d_f, 0, atom_double3_size);
+
+        cudaDeviceSynchronize();
+
         // calculate accerlation at the next timestep a(t+dt) by x(t+dt)
-        calculate_force<<<dimGridforBond, dimBlockforBond>>>(
+        // calc_leb_force<<<dimGridforBond, dimBlockforBond>>>(
+        //     d_x, d_f,
+        //     d_ke, d_r0, d_rc, d_atom_i, d_atom_j, 
+        //     sys.nbonds
+        // );
+
+        calc_bep_force<<<dimGridforBond, dimBlockforBond>>>( // calculate bilinear elastoplastic spring force
             d_x, d_f,
-            d_k, d_r0, d_rc, d_atom_i, d_atom_j, 
-            sys.natoms, sys.nbonds
+            d_ft, d_fa, d_fb, d_fy, d_state,
+            d_ue, d_up,
+            d_ke, d_kp, d_r0, d_rc, d_atom_i, d_atom_j,
+            sys.nbonds
         );
 
         cudaDeviceSynchronize();
@@ -414,7 +541,7 @@ int Run::verlet(
         if (ti % dump.ndump == 0 || ti % thermo.nthermo == 0) {
             cudaMemcpy(sys.x, d_x, atom_double3_size, cudaMemcpyDeviceToHost);
             cudaMemcpy(sys.v, d_v, atom_double3_size, cudaMemcpyDeviceToHost);
-            cudaMemcpy(h_k, d_k, bond_float_size, cudaMemcpyDeviceToHost);
+            cudaMemcpy(h_ke, d_ke, bond_float_size, cudaMemcpyDeviceToHost);
 
             if (ti % dump.ndump == 0) {
 
@@ -426,7 +553,7 @@ int Run::verlet(
 
                 stress_virial_pot<<<dimGridforBond, dimBlockforBond>>>(
                     d_stress, d_m, d_x, d_v,
-                    d_k, d_r0, d_rc,
+                    d_ke, d_r0, d_rc,
                     d_atom_i, d_atom_j,
                     sys.nbonds
                 );
@@ -455,7 +582,7 @@ int Run::verlet(
     // cudaFree(d_a_old);
     // cudaFree(d_a_new);
 
-    cudaFree(d_k);
+    cudaFree(d_ke);
     cudaFree(d_r0);
     cudaFree(d_rc);
     cudaFree(d_atom_i);
@@ -463,7 +590,7 @@ int Run::verlet(
  
     // Release host memory
     free(h_m);
-    free(h_k);
+    free(h_ke);
     free(h_r0);
     free(h_rc);
     free(h_stress);

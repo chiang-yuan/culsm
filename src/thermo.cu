@@ -1,11 +1,11 @@
 #include "thermo.h"
 
-// // host vectors
+// host vectors
 
 double* h_parsum_pe;
 double* h_parsum_ke;
 
-// // device vectors
+// device vectors
 
 double* d_parsum_pe; 		// partial sum of potential energy
 double* d_parsum_ke; 		// partial sum of kinetic energy
@@ -13,8 +13,7 @@ double* d_parsum_ke; 		// partial sum of kinetic energy
 __global__ void reduce_pe(
 	double* x, float* k, float* r0, int* atom_i, int* atom_j,
 	double* parsum_pe, // partial sum of potential energy
-	int nbonds
-)
+	int nbonds)
 {
 	extern __shared__ double cache[];
 
@@ -54,8 +53,7 @@ __global__ void reduce_pe(
 __global__ void reduce_ke(
 	float* m, double* v, 
 	double* parsum_ke, // partial sum of potential energy
-	int natoms
-)
+	int natoms)
 {
 	extern __shared__ double cache[];
 
@@ -123,7 +121,7 @@ double Thermo::pe(System & sys)
 
 	int sm = threadsPerBlockforBonds*sizeof(double);
 	reduce_pe<<<dimGridforBond, dimBlockforBond, sm>>>(
-		d_x, d_k, d_r0, d_atom_i, d_atom_j,
+		d_x, d_ke, d_r0, d_atom_i, d_atom_j,
 		d_parsum_pe, // partial sum of potential energy
 		sys.nbonds
     );
