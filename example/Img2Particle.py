@@ -25,18 +25,20 @@ parser = argparse.ArgumentParser(prog='Img2Particle',
 parser.add_argument('infile', metavar='images', type=str,
                     help='absolute or relative address of image files')
 parser.add_argument('-o', dest='outfile', metavar='data file', type=str)
-parser.add_argument('-lx', dest='lx', metavar='Lx', type=float, default=25600,
-                    help='model size in x dimension\t(default = 25600)')
-parser.add_argument('-ly', dest='ly', metavar='Ly',type=float, default=25600,
-                    help='model size in y dimension\t(default = 25600)')
+parser.add_argument('-lx', dest='lx', metavar='Lx', type=float,
+                    help='model size in x dimension')
+parser.add_argument('-ly', dest='ly', metavar='Ly',type=float,
+                    help='model size in y dimension')
 parser.add_argument('-lz', dest='lz', metavar='Lz',type=float, default=1,
                     help='model size in z dimension\t(default = 1)')
-parser.add_argument('-s', dest='s', metavar='lc', type=float, default=100,
-                    help='lattice constant = particle spacing along (100)\t(default = 100)')
+parser.add_argument('-s', dest='s', metavar='lc', type=float,
+                    help='lattice constant = particle spacing along (100)')
 parser.add_argument('-t', dest='types', metavar='types', type=int, default=2,
-                    help='number of particle types')
-parser.add_argument('-n',dest='nsize', metavar='len', nargs=2, type=float, default=[250, 3400],
-                    help='create notch with lengths in x and y dimension\t(default = [500, 3400])')
+                    help='number of particle types\t(default = 2)')
+parser.add_argument('-n',dest='nsize', metavar='len', nargs=2, type=float, default=[0, 0],
+                    help='create notch with lengths in x and y dimension\t(default = [0, 0])')
+parser.add_argument('--single', action='store_true')
+parser.add_argument('--verbose', action='store_true')
 parser.add_argument('--version', action='version', version='%(prog)s {:s}'.format(version))
 
 args = parser.parse_args()
@@ -118,7 +120,7 @@ ntypes = args.types
 rows, cols = img.shape
 colt = dtype.get('type')
 
-hist, bin_edges = np.histogram(img.reshape(-1),bins=ntypes)
+hist, bin_edges = np.histogram(img.reshape(-1), bins=ntypes)
 
 print(hist, bin_edges)
 
@@ -128,9 +130,9 @@ for i in range(natoms):
     # if x < 0 or x >= cols or y < 0 or y >= rows:
     #     atoms[i,colt] = 1
     if x < 0:
-        atoms[i,colt] = 3
+        atoms[i,colt] = ntypes+1
     elif x >= cols:
-        atoms[i,colt] = 4
+        atoms[i,colt] = ntypes+2
     else:
         for b in range(ntypes):
             if img[y,x] >= bin_edges[b]:
@@ -143,7 +145,12 @@ ntypes = int(max(atoms[:,colt]))
 wn = args.nsize[0]
 hn = args.nsize[1]
 
-indices = np.logical_not(np.logical_and(np.logical_and(atoms[:,colx] < lx/2.0 + wn/2.0, atoms[:,colx] > lx/2.0 - wn/2.0), atoms[:,coly] < hn))
+indices = np.logical_not(
+    np.logical_and(
+        np.logical_and(atoms[:,colx] < lx/2.0 + wn/2.0, atoms[:,colx] > lx/2.0 - wn/2.0),
+        atoms[:,coly] < hn
+    )
+)
 
 atoms = atoms[indices]
 natoms = atoms.shape[0]
@@ -152,24 +159,23 @@ color = [str(item/(ntypes+1)) for item in atoms[:,colt]]
 
 # ===== Single or Composite
 
-single = False
-
-if single == True:
+if args.single:
     atoms = atoms[atoms[:,dtype.get('type')] == 1]
     natoms = atoms.shape[0]
     atoms[:,dtype.get('id')] = np.arange(1,natoms+1)
     color = [str(item/(ntypes+1)) for item in atoms[:,colt]]
 
-plt.figure(figsize=[12.8, 9.6], dpi=330, facecolor=None, edgecolor=None, frameon=True)
+if args.verbose:
+    plt.figure(figsize=[12.8, 9.6], dpi=330, facecolor=None, edgecolor=None, frameon=True)
 
-plt.subplot(121)
-plt.imshow(img,cmap='gist_gray')
+    plt.subplot(121)
+    plt.imshow(img,cmap='gist_gray')
 
-plt.subplot(122)
-plt.scatter(atoms[:,colx],atoms[:,coly],s=0.1,marker="o",c=color)
-ax = plt.gca()
-ax.set_aspect(1.0)
-plt.savefig(infile+'_conversion.png')
+    plt.subplot(122)
+    plt.scatter(atoms[:,colx],atoms[:,coly],s=0.1,marker="o",c=color)
+    ax = plt.gca()
+    ax.set_aspect(1.0)
+    plt.savefig(infile+'_conversion.png')
 
 if args.outfile is None:
     outfile = os.path.splitext(infile)[0] + '.data'

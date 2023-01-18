@@ -43,6 +43,8 @@ float* d_ue;        // bond elastic deformation
 float* d_up;        // bond plastic deformation
 int* d_state;       // bond state
 
+int latest_timestep = 0;
+
 __global__ void fix_rigidmove(int* type, double* x, double* v, double* a,
                               int fix_type, double vx, double vy, double vz,
                               float dt, int n) 
@@ -57,8 +59,6 @@ __global__ void fix_rigidmove(int* type, double* x, double* v, double* a,
         
         v[i] = 0.0;
         a[i] = 0.0;
-        // a_old[i] = 0.0;
-        // a_new[i] = 0.0;
     }
 
     __syncthreads();
@@ -90,7 +90,7 @@ __global__ void verlet_update_vel(double* v, double* a,
 
 __global__ void calc_leb_force(  // calculate linear elastic brittle spring force
     double* x, double* f,
-    float* k, float* r0, float* rc, int* atom_i, int* atom_j,
+    float* ft, float* k, float* r0, float* rc, int* atom_i, int* atom_j,
     int nbonds)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -114,9 +114,11 @@ __global__ void calc_leb_force(  // calculate linear elastic brittle spring forc
 
         if (r_ij < EPS) r_ij += EPS;
 
-        double fix = -k[i] * (r_ij - r0[i]) * (x[i3] - x[j3])/r_ij;
-        double fiy = -k[i] * (r_ij - r0[i]) * (x[i3 + 1] - x[j3 + 1])/r_ij;
-        double fiz = -k[i] * (r_ij - r0[i]) * (x[i3 + 2] - x[j3 + 2])/r_ij;
+        ft[i] = k[i] * (r_ij - r0[i]);
+
+        double fix = -ft[i] * (x[i3] - x[j3])/r_ij;
+        double fiy = -ft[i] * (x[i3 + 1] - x[j3 + 1])/r_ij;
+        double fiz = -ft[i] * (x[i3 + 2] - x[j3 + 2])/r_ij;
 
         atomicAdd(&f[i3], fix);
         atomicAdd(&f[i3 + 1], fiy);
@@ -184,7 +186,11 @@ __global__ void calc_bep_force( // calculate bilinear elastoplastic spring force
         else {
             state[i] = 2;
             ft[i] = 0;
+            fa[i] = 0;
+            fb[i] = 0;
         }
+
+        if (r_ij < EPS) r_ij += EPS;
 
         double fix = -ft[i] * (x[i3] - x[j3])/r_ij;
         double fiy = -ft[i] * (x[i3 + 1] - x[j3 + 1])/r_ij;
@@ -250,7 +256,7 @@ __global__ void stress_virial_kin(
 __global__ void stress_virial_pot(
     float* stress, 
     float* m, double* x, double* v,
-    float* k, float* r0, float* rc, 
+    float* ft, 
     int* atom_i, int* atom_j,
     int nbonds)
 {
@@ -272,9 +278,13 @@ __global__ void stress_virial_pot(
 
         if (r_ij < EPS) r_ij += EPS;
 
-        double fix = -k[i] * (r_ij - r0[i]) * (x[i3_i] - x[i3_j])/r_ij;
-        double fiy = -k[i] * (r_ij - r0[i]) * (x[i3_i + 1] - x[i3_j + 1])/r_ij;
-        double fiz = -k[i] * (r_ij - r0[i]) * (x[i3_i + 2] - x[i3_j + 2])/r_ij;
+        double fix = -ft[i] * (x[i3_i] - x[i3_j])/r_ij;
+        double fiy = -ft[i] * (x[i3_i + 1] - x[i3_j + 1])/r_ij;
+        double fiz = -ft[i] * (x[i3_i + 2] - x[i3_j + 2])/r_ij;
+
+        // double fix = -k[i] * (r_ij - r0[i]) * (x[i3_i] - x[i3_j])/r_ij;
+        // double fiy = -k[i] * (r_ij - r0[i]) * (x[i3_i + 1] - x[i3_j + 1])/r_ij;
+        // double fiz = -k[i] * (r_ij - r0[i]) * (x[i3_i + 2] - x[i3_j + 2])/r_ij;
 
         atomicAdd(&stress[i6_i], 1.0 / 2.0 * (x[i3_j] - x[i3_i]) * fix);   // sxx
         atomicAdd(&stress[i6_i + 1], 1.0 / 2.0 * (x[i3_j + 1] - x[i3_i + 1]) * fiy);   // syy
@@ -483,7 +493,7 @@ int Run::verlet(
     printf("Copy data from host to device... %f (ms) \n", cpytime);
 
     // volatile bool flag = true;
-    for (int ti = 0; ti < timesteps; ti++) {
+    for (int ti = 0; ti <= timesteps; ti++) {
 
         cudaEventRecord(start,0);
 
@@ -514,7 +524,7 @@ int Run::verlet(
         // calculate accerlation at the next timestep a(t+dt) by x(t+dt)
         // calc_leb_force<<<dimGridforBond, dimBlockforBond>>>(
         //     d_x, d_f,
-        //     d_ke, d_r0, d_rc, d_atom_i, d_atom_j, 
+        //     d_ft, d_ke, d_r0, d_rc, d_atom_i, d_atom_j, 
         //     sys.nbonds
         // );
 
@@ -543,34 +553,32 @@ int Run::verlet(
             cudaMemcpy(sys.v, d_v, atom_double3_size, cudaMemcpyDeviceToHost);
             cudaMemcpy(h_ke, d_ke, bond_float_size, cudaMemcpyDeviceToHost);
 
-            if (ti % dump.ndump == 0) {
+            stress_virial_kin<<<dimGridforAtom6, dimBlockforAtom>>>(
+                d_stress, d_m, d_v, 
+                sys.natoms);
 
-                stress_virial_kin<<<dimGridforAtom6, dimBlockforAtom>>>(
-                    d_stress, d_m, d_v, 
-                    sys.natoms);
+            cudaDeviceSynchronize();
 
-                cudaDeviceSynchronize();
+            stress_virial_pot<<<dimGridforBond, dimBlockforBond>>>(
+                d_stress, d_m, d_x, d_v,
+                d_ft,
+                d_atom_i, d_atom_j,
+                sys.nbonds
+            );
 
-                stress_virial_pot<<<dimGridforBond, dimBlockforBond>>>(
-                    d_stress, d_m, d_x, d_v,
-                    d_ke, d_r0, d_rc,
-                    d_atom_i, d_atom_j,
-                    sys.nbonds
-                );
+            cudaDeviceSynchronize();
 
-                cudaDeviceSynchronize();
+            cudaMemcpy(h_stress, d_stress, atom_float6_size, cudaMemcpyDeviceToHost);
 
-                cudaMemcpy(h_stress, d_stress, atom_float6_size, cudaMemcpyDeviceToHost);
-
-                dump.write_lmpdump(ti, sys);
-            }
-            if (ti % thermo.nthermo == 0) thermo.write_thermo(ti, sys);
+            if (ti % dump.ndump == 0) dump.write_lmpdump(latest_timestep + ti, sys);
+            if (ti % thermo.nthermo == 0) thermo.write_thermo(latest_timestep + ti, sys);
         }
 
         cudaEventRecord(stop,0);
         cudaEventSynchronize(stop);
     }
     
+    latest_timestep += timesteps;
     
     // Release device memory
     cudaFree(d_type);

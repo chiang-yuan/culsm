@@ -24,8 +24,11 @@ extern double* d_x;
 extern double* d_v;
 extern float* d_ke;
 extern float* d_r0;
+extern float* d_ue;
+extern float* d_fa;
 extern int* d_atom_i;
 extern int* d_atom_j;
+extern float* d_stress;
 
 // extern double* d_parsum_pe;
 
@@ -46,6 +49,7 @@ public:
 	int set(int nthermo_);
 	double pe(System & sys);	// potential energy
 	double ke(System & sys);	// kinetic energy
+	double stress(System & sys, int comp);	// stress
 	virtual int write_thermo(int timestep, System &sys);
 protected:
 	char* filepattern;
