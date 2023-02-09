@@ -8,6 +8,7 @@
 #include "system.h"
 #include "error.h"
 #include "read_data.h"
+#include "create_bonds.h"
 #include "run.h"
 #include "dump.h"
 #include "thermo.h"
@@ -56,6 +57,7 @@ int main(int argc, char *argv[]) {
 	Error error;
 	System sys(&error);
 	ReadData reader(&error);
+	BondCreator bond_creator(&error);
 	Run run(&error);
 	Dump dump(&error);
 	Thermo thermo(&error);
@@ -103,6 +105,26 @@ int main(int argc, char *argv[]) {
             for (int j = 0; j < nargs; j++) args[j] = argv[1+j];
 
 			reader.load_from_lmpdata(args[0], sys);
+        }
+
+		if (strncmp(argv[0], "create_bonds", 12) == 0) {
+            
+			int nargs;
+			char** args;
+
+			if (strncmp(argv[1], "rtype", 5) == 0)  {
+				nargs = 6;
+
+				if (argc != 1 + nargs) error.message("Incorrect argument for create_bonds::range_type", -1);
+
+				int btype = atoi(argv[2]);
+				int ati = atoi(argv[3]);
+				int atj = atoi(argv[4]);
+				float rmin = atof(argv[5]);
+				float rmax = atof(argv[6]);
+
+				bond_creator.range_type(btype, ati, atj, rmin, rmax, sys);
+			}
         }
 
 		if (strncmp(argv[0], "run", 3) == 0) {
@@ -186,6 +208,25 @@ int main(int argc, char *argv[]) {
 
 				strcpy(sys.bondTypes[btype - 1].name, argv[2]);
 			}
+			else if (strncmp(argv[2], "bep", 3) == 0) {
+
+				if (argc != 1 + 7) error.message("Incorrect argument for linear elastic critical strain bond", -1);
+				double ke = atof(argv[3]);
+				double kp = atof(argv[4]);
+				double r0 = atof(argv[5]);
+				double rc = atof(argv[6]);
+				double fy = atof(argv[7]);
+
+				sys.bondTypes[btype - 1].no_bond_coeffs = 5;
+				
+				sys.bondTypes[btype - 1].coeff[0] = ke;
+				sys.bondTypes[btype - 1].coeff[1] = kp;
+				sys.bondTypes[btype - 1].coeff[2] = r0;
+				sys.bondTypes[btype - 1].coeff[3] = rc;
+				sys.bondTypes[btype - 1].coeff[4] = fy;
+
+				strcpy(sys.bondTypes[btype - 1].name, argv[2]);
+			}
 		}
     }
 	
@@ -197,153 +238,3 @@ int main(int argc, char *argv[]) {
 	printf("=====================================================================\n");
     return 0;
 }
-
-
-/*
-int count_words(const char* line) {
-	int n = strlen(line) + 1;
-	char *copy = new char[n];
-	strcpy(copy, line);
-
-	char *ptr;
-	if ((ptr = strchr(copy, '#'))) *ptr = ' ';
-
-	if (strtok(copy, WHITESPACE) == NULL) {
-		delete[] copy;
-		return 0;
-	}
-
-	n = 1;
-	while (strtok(NULL, WHITESPACE)) n++;
-	delete[] copy;
-
-bool check_arg(char **arg, const char *flag, int num, int argc) {
-
-	if (num >= argc) {
-		printf("Missing argument for \"%s\" flag\n", flag);
-		return false;
-	}
-
-	if (arg[num][0] == '-' || arg[num][0] == '<' || arg[num][0] == '>') {
-		printf("Incorrect argument to \"%s\" flag: %s", flag, arg[num]);
-		return false;
-	}
-	return true;
-}
-
-int main(int argc, char *argv[]) {
-
-	// system
-
-	Error error;
-	System sys(&error);
-	// ReadData reader(&error);
-	// WriteData writer(&error);
-
-	if (argc < 2) {
-		//printf("usage command: < (input file name) [-w delete type #] [-w add type #] [-s number (type#) #] [-h valence n/# (typeO) (typeH) (typeO-H)] [> (output file name) hint y/n]\n");
-		char* buffer = new char[MAX_STRING];
-		fgets(buffer, MAX_STRING, stdin);
-
-		argc = count_words(buffer);
-		argv = new char*[argc];
-
-		argv[0] = strtok(buffer, WHITESPACE);
-		if (argv[0] == NULL) {
-			return error.message("Incorrect input commnad line", 1);
-		}
-
-		for (int i = 1; i < argc; i++) {
-			argv[i] = strtok(NULL, WHITESPACE);
-			if (argv[i] == NULL) {
-				return error.message("Missing argument in command line", 2);
-			}
-		}
-
-		int n = 0;
-		while (n < argc)
-		{
-			if (strncmp(argv[n], "<", 1) == 0) {
-				int ncomm = 1;
-				char** commd = new char*[ncomm];
-
-				for (int i = 0; i < ncomm; i++) {
-					n++;
-					if (!check_arg(argv, "read_data", n, argc)) return error.message("", 3);
-					commd[i] = argv[n];
-				}
-				// printf("ReadData::command(): %d\n", reader.command(ncomm, commd, sys));
-
-			}
-
-			if (strncmp(argv[n], ">", 1) == 0) {
-				int ncomm = 3;
-				char** commd = new char*[ncomm];
-
-				for (int i = 0; i < ncomm; i++) {
-					n++;
-					if (!check_arg(argv, "write_data", n, argc)) return error.message("", 6);
-					commd[i] = argv[n];
-				}
-
-				// printf("WriteData::commd(): %d\n", writer.command(ncomm, commd, sys));
-			}
-
-			if (argv[n] == NULL) {
-				return error.message("Missing argument in command line", 5);
-			}
-			n++;
-		}
-		system("pause");
-	}
-	else {
-		time_t localtime;
-		time(&localtime);
-		printf("=====================================================================\n");
-		printf("CULSM (%s) starts at %s", CULSM_VERSION, ctime(&localtime));
-		printf("=====================================================================\n");
-
-		int n = 1;
-		while (n < argc)
-		{
-			if (strncmp(argv[n], "<", 1) == 0) {
-				int ncomm = 1;
-				char** commd = new char*[ncomm];
-
-				for (int i = 0; i < ncomm; i++) {
-					n++;
-					if (!check_arg(argv, "read_data", n, argc)) return error.message("", 3);
-					commd[i] = argv[n];
-				}
-				// printf("End ReadData: %d\n", reader.command(ncomm, commd, sys));
-
-			}
-
-
-			if (strncmp(argv[n], ">", 1) == 0) {
-				int ncomm = 3;
-				char** commd = new char*[ncomm];
-
-				for (int i = 0; i < ncomm; i++) {
-					n++;
-					if (!check_arg(argv, "write_data", n, argc)) return error.message("", 6);
-					commd[i] = argv[n];
-				}
-
-				// printf("End WriteData: %d:\n", writer.command(ncomm, commd, sys));
-			}
-
-			if (argv[n] == NULL) {
-				return error.message("Missing argument in command line", 5);
-			}
-			n++;
-		}
-		time(&localtime);
-		printf("=====================================================================\n");
-		printf("CULSM (%s) ends at %s", CULSM_VERSION, ctime(&localtime));
-		printf("=====================================================================\n");
-	}
-
-	return 0;
-}
-*/
